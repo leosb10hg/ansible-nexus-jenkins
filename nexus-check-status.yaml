@@ -1,0 +1,17 @@
+---
+- name: Get password and ip address for Nexus services
+  hosts: servers
+  tasks:
+    - name: Get Nexus admin password
+      slurp:
+        src: /opt/app/sonatype-work/nexus3/admin.password
+      register: admin_password_nexus
+    - name: Decode and store Nexus admin password
+      set_fact:
+        nexus_admin_password: "{{ admin_password_nexus.content | b64decode }}"
+    - name: Gather IP address
+      set_fact:
+        nexus_ip_address: "{{ ansible_default_ipv4.address }}"
+    - name: Nexus credentials
+      debug:
+        msg: "User: admin || Password: {{ nexus_admin_password }} || IP Address: http://{{ nexus_ip_address }}:8443"

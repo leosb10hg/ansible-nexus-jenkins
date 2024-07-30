@@ -1,0 +1,75 @@
+- name: Install Jenkins and dependencies
+  hosts: servers
+  become: yes
+  tasks:
+    - name: Download Jenkins repositories
+      command: wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
+      args:
+        creates: /etc/yum.repos.d/jenkins.repo
+    - name: Import Jenkins key GPG
+      rpm_key:
+        state: present
+        key: https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+    - name: Install Jenkins dependencies 
+      yum:
+        name:
+          - java-17-openjdk
+        state: present
+    - name: Install Jenkins
+      yum:
+        name: jenkins
+        state: present
+    - name: System daemons reload
+      command: systemctl daemon-reload
+    - name: Enable Jenkins Service
+      systemd:
+        name: jenkins
+        enabled: yes
+
+- name: Version Java for Jenkins
+  hosts: servers
+  become: yes
+  tasks:
+    - name: Rename file "jenkins.service-"
+      shell: |
+        cp /usr/lib/systemd/system/jenkins.service /usr/lib/systemd/system/jenkins.service.bkp
+      args:
+        executable: /bin/bash
+      register: renamed_result
+    - name: Show renamed result
+      debug:
+        var: renamed_result.stdout
+    - name: Add JAVA_HOME to file jenkins.service
+      copy:
+        src: /root/ansible/files/jenkins-file-config/jenkins.service
+        dest: /usr/lib/systemd/system/
+    - name: System daemons reload
+      command: systemctl daemon-reload
+    - name: Start Jenkins service
+      systemd:
+        name: jenkins
+        state: started
+
+    - name: Check Jenkins Service Status
+      shell: systemctl status jenkins
+      register: jenkins_status
+    - name: Show Jenkins Service Status
+      debug:
+        msg: "{{ jenkins_status.stdout_lines }}"
+
+- name: Get password and ip address for Jenkins services
+  hosts: servers
+  tasks:
+     - name: Get Jenkins root password
+      slurp:
+        src: /var/lib/jenkins/secrets/initialAdminPassword
+      register: admin_password_jenkins
+    - name: Decode and store Jenkins admin password
+      set_fact:
+        jenkins_admin_password: "{{ admin_password_jenkins.content | b64decode }}"
+    - name: Gather IP address
+      set_fact:
+        jenkins_ip_address: "{{ ansible_default_ipv4.address }}"
+    - name: Jenkins credentials
+      debug:
+        msg: "User: root || Password: {{ jenkins_admin_password }} || IP Address: http://{{ jenkins_ip_address }}:8080"

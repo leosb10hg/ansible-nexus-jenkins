@@ -1,0 +1,124 @@
+---
+- name: Enable firewalld ports
+  hosts: servers
+  become: yes
+  tasks:
+    - name: Enable port 8443/tcp
+      firewalld:
+        port: 8443/tcp  # Puerto para Nexus https
+        permanent: yes
+        state: enabled
+    - name: Enable port 8445/ttcp
+      firewalld:
+        port: 8445/tcp # Puerto para Nexus API
+        permanent: yes
+        state: enabled
+    - name: Enable port 8081/tcp
+      firewalld:
+        port: 8081/tcp # Puerto para Nexus http
+        permanent: yes
+        state: enabled
+     - name: Recargar firewalld
+      command: firewall-cmd --reload
+
+
+- name: Install tools for Oracle 
+  hosts: servers
+  become: yes
+  tasks:
+    - name: Update all package on the system 
+      yum:
+        name: '*'
+        state: latest
+    - name: Install tools
+      yum:
+        name:
+          - nano
+          - git
+          - tree
+
+- name: Setup Nexus on Oracle Linux 8.X
+  hosts: servers
+  become: yes
+  tasks:
+    - name: Install Java JDK 1.8
+      dnf:
+        name: java-1.8.0-openjdk.x86_64
+        state: present
+    - name: Create user 'nexus'
+      user:
+        name: nexus
+        state: present
+    - name: Create directory /opt/app
+      file:
+        path: /opt/app
+        state: directory
+    - name: Download Nexus
+      get_url:
+        url: https://download.sonatype.com/nexus/3/latest-unix.tar.gz
+        dest: /opt/app/sonartype-nexus.tar.gz
+        timeout: 1200
+    - name: Extract Nexus
+      ansible.builtin.unarchive:
+        src: /opt/app/sonartype-nexus.tar.gz
+        dest: /opt/app/
+        remote_src: yes
+    - name: Rename file "nexus-"
+      shell: |
+        for file in /opt/app/nexus-*; do
+          mv "$file" /opt/app/nexus
+          echo "Renamed: $file -> /opt/app/nexus"
+          break
+        done
+      args:
+        executable: /bin/bash
+      register: renamed_result
+    - name: Show renamed result
+      debug:
+        var: renamed_result.stdout
+    - name: change Nexus file permissions in /opt/app
+      command: chown -R nexus:nexus /opt/app/nexus
+    - name: change file permissionsdel sonatype-work in /opt/app
+      command: chown -R nexus:nexus /opt/app/sonatype-work
+    - name: Define Nexus user in nexus.rc
+      lineinfile:
+        path: /opt/app/nexus/bin/nexus.rc
+        regexp: '^run_as_user='
+        line: 'run_as_user="nexus"'
+        create: yes
+    - name: Create systemd service file for Nexus
+      copy:
+        dest: /etc/systemd/system/nexus.service
+        content: |
+          [Unit]
+          Description=nexus service
+          After=network.target
+
+          [Service]
+          Type=forking
+          LimitNOFILE=65536
+          User=nexus
+          Group=nexus
+          ExecStart=/opt/app/nexus/bin/nexus start
+          ExecStop=/opt/app/nexus/bin/nexus stop
+          Restart=on-abort
+
+          [Install]
+          WantedBy=multi-user.target
+
+- name: Set and verify Nexus Service
+  hosts: servers
+  tasks:
+    - name: systemctl daemon-reload
+      command: systemctl daemon-reload
+      register: result
+    - name: systemctl start nexus
+      command: systemctl start nexus
+    - name: systemctl enable nexus
+      command: systemctl enable nexus
+    - name: systemctl status nexus
+      command: systemctl status nexus
+      register: nexus_status
+    - name: Output status Nexus
+      debug:
+        msg: "{{ nexus_status.stdout_lines }}"

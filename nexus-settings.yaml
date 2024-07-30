@@ -1,0 +1,24 @@
+---
+- name: Add config file for https certificates
+  hosts: servers
+  tasks:
+    - name: Add config file for https certificates - Need launch manually  # Se requiere la configuración manual del archiivo BASH para generar los certificados
+      copy:
+        src: /root/ansible/files/certificate-https.sh
+        dest: /opt/app/nexus/etc/ssl
+  
+- name: Set and verify Nexus Service
+  hosts: servers
+  tasks:
+    - name: systemctl status nexus
+      command: systemctl status nexus
+      register: nexus_status
+    - name: Output status Nexus
+      debug:
+        msg: "{{ nexus_status.stdout_lines }}"
+    - name: Port status - ss -antpl
+      command: ss -antpl
+      register: ss_output
+    - name: Status ports ss -antpl
+      debug:
+        msg: "{{ ss_output.stdout }}"
